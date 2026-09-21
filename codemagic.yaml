@@ -1,0 +1,250 @@
+workflows:
+  android_debug:
+    name: QuizPilot Fast APK
+    instance_type: mac_mini_m2
+    environment:
+      java: 17
+      vars:
+        MIN_SDK: "26"
+    scripts:
+      - name: Generate Android project
+        script: |
+          set -e
+          mkdir -p app/src/main/java/com/quizpilot/fast app/src/main/res/xml app/src/main/res/values
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "QuizPilotFast"
+          include(":app")
+          EOF
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          EOF
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          EOF
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.quizpilot.fast"
+              compileSdk = 35
+              defaultConfig {
+                  applicationId = "com.quizpilot.fast"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "0.1.0"
+          }
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+                  }
+          }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.15.0")
+              implementation("androidx.appcompat:appcompat:1.7.0")
+          }
+          EOF
+          cat > app/proguard-rules.pro <<'EOF'
+          # QuizPilot Fast
+          EOF
+          cat > app/src/main/res/values/strings.xml <<'EOF'
+          <resources>
+              <string name="app_name">QuizPilot Fast</string>
+          </resources>
+          EOF
+          cat > app/src/main/res/values/colors.xml <<'EOF'
+          <resources><color name="transparent">#00000000</color></resources>
+          EOF
+          cat > app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:windowActionModeOverlay">true</item>
+              </style>
+          </resources>
+          EOF
+          cat > app/src/main/res/xml/accessibility_service_config.xml <<'EOF'
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewTextChanged|typeViewSelected"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:notificationTimeout="30"
+              android:canRetrieveWindowContent="true"
+              android:description="@string/app_name"
+              android:settingsActivity="com.quizpilot.fast.MainActivity" />
+          EOF
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <application
+                  android:allowBackup="false"
+                  android:label="@string/app_name"
+                  android:theme="@style/AppTheme"
+                  android:supportsRtl="true">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <service
+                      android:name=".QuizAccessibilityService"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+                      android:exported="false">
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService"/>
+                      </intent-filter>
+                      <meta-data
+                          android:name="android.accessibilityservice"
+                          android:resource="@xml/accessibility_service_config"/>
+                  </service>
+              </application>
+          </manifest>
+          EOF
+          cat > app/src/main/java/com/quizpilot/fast/MainActivity.kt <<'EOF'
+          package com.quizpilot.fast
+
+          import android.content.Intent
+          import android.net.Uri
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import androidx.appcompat.app.AppCompatActivity
+
+          class MainActivity : AppCompatActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  val box = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(40, 60, 40, 40)
+                  }
+                  box.addView(TextView(this).apply {
+                      text = "QuizPilot Fast\\n\\n1. Enable Accessibility access.\\n2. Allow overlay permission.\\n3. Add your AI API key later in Settings.\\n\\nThe first version observes text and shows answers; it does not auto-click."
+                      textSize = 18f
+                  })
+                  box.addView(Button(this).apply {
+                      text = "Open Accessibility Settings"
+                      setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                  })
+                  box.addView(Button(this).apply {
+                      text = "Allow Overlay"
+                      setOnClickListener {
+                          startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                      }
+                  })
+                  setContentView(box)
+              }
+          }
+          EOF
+          cat > app/src/main/java/com/quizpilot/fast/QuizAccessibilityService.kt <<'EOF'
+          package com.quizpilot.fast
+
+          import android.accessibilityservice.AccessibilityService
+          import android.graphics.Color
+          import android.graphics.PixelFormat
+          import android.view.Gravity
+          import android.view.WindowManager
+          import android.view.accessibility.AccessibilityEvent
+          import android.view.accessibility.AccessibilityNodeInfo
+          import android.widget.TextView
+          import java.security.MessageDigest
+          import java.util.concurrent.Executors
+
+          class QuizAccessibilityService : AccessibilityService() {
+              private val executor = Executors.newSingleThreadExecutor()
+              private var lastFingerprint = ""
+              private var overlay: TextView? = null
+
+              override fun onServiceConnected() {
+                  super.onServiceConnected()
+                  showOverlay("QP")
+              }
+
+              override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+                  val root = rootInActiveWindow ?: return
+                  val texts = ArrayList<String>()
+                  collect(root, texts)
+                  val cleaned = texts.map { it.trim() }.filter { it.length >= 2 }.distinct()
+                  if (cleaned.isEmpty()) return
+                  val joined = cleaned.joinToString("\\n")
+                  val fingerprint = sha256(joined)
+                  if (fingerprint == lastFingerprint) return
+                  lastFingerprint = fingerprint
+                  // Local extraction is intentionally fast. AI solving is wired in a later build.
+                  val question = cleaned.firstOrNull { it.contains("?") }
+                  if (question != null) showOverlay("QP: reading…")
+              }
+
+              private fun collect(node: AccessibilityNodeInfo, out: MutableList<String>) {
+                  node.text?.toString()?.let { if (it.isNotBlank()) out.add(it) }
+                  for (i in 0 until node.childCount) node.getChild(i)?.let { collect(it, out) }
+              }
+
+              private fun sha256(s: String): String =
+                  MessageDigest.getInstance("SHA-256").digest(s.toByteArray())
+                      .joinToString("") { "%02x".format(it) }
+
+              private fun showOverlay(text: String) {
+                  val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+                  if (overlay == null) {
+                      overlay = TextView(this).apply {
+                          setTextColor(Color.WHITE)
+                          setBackgroundColor(Color.argb(220, 20, 20, 20))
+                          setPadding(18, 10, 18, 10)
+                          textSize = 13f
+                      }
+                      val type = if (android.os.Build.VERSION.SDK_INT >= 26)
+                          WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                      else WindowManager.LayoutParams.TYPE_PHONE
+                      val p = WindowManager.LayoutParams(
+                          WindowManager.LayoutParams.WRAP_CONTENT,
+                          WindowManager.LayoutParams.WRAP_CONTENT,
+                          type,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                          PixelFormat.TRANSLUCENT
+                      )
+                      p.gravity = Gravity.TOP or Gravity.END
+                      p.x = 20; p.y = 120
+                      wm.addView(overlay, p)
+                  }
+                  overlay?.text = text
+              }
+
+              override fun onInterrupt() {}
+              override fun onDestroy() {
+                  overlay?.let { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) }
+                  executor.shutdownNow()
+                  super.onDestroy()
+              }
+          }
+          EOF
+          # Generate a Gradle wrapper using the preinstalled Gradle if available.
+          if command -v gradle >/dev/null 2>&1; then
+            gradle wrapper --gradle-version 8.10.2
+          fi
+      - name: Build debug APK
+        script: |
+          set -e
+          if [ -x ./gradlew ]; then
+            ./gradlew :app:assembleDebug --no-daemon
+          else
+            gradle :app:assembleDebug --no-daemon
+          fi
+    artifacts:
+      - app/build/outputs/apk/debug/app-debug.apk
